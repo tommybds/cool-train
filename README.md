@@ -23,7 +23,7 @@ Un simulateur de train en 3D créé avec React, Three.js et React Three Fiber.
 
 1. Clonez le repository
 ```bash
-git clone https://github.com/votre-username/train-simulator.git
+git clone https://github.com/tommybds/train-simulator.git
 ```
 
 2. Installez les dépendances
@@ -72,4 +72,4 @@ MIT License - voir le fichier [LICENSE.md](LICENSE.md) pour plus de détails.
 
 ## 🙋‍♂️ Auteur
 
-[Votre nom] - [Votre site web/GitHub]
+Tommy Bordas - [tommy-bordas.fr](https://tommy-bordas.fr)

@@ -1,1 +1,21 @@
- 
+# 1. D'abord, crée un nouveau repository sur GitHub
+# Va sur https://github.com/new
+# Nomme-le "train-simulator" (sans créer de README)
+
+# 2. Initialise Git localement
+git init
+
+# 3. Ajoute tous les fichiers
+git add .
+
+# 4. Crée le premier commit
+git commit -m "Initial commit"
+
+# 5. Renomme la branche principale en main
+git branch -M main
+
+# 6. Ajoute le remote (remplace tommybds par ton username GitHub)
+git remote add origin https://github.com/tommybds/train-simulator.git
+
+# 7. Pousse les changements
+git push -u origin main
