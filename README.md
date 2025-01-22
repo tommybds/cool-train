@@ -1,4 +1,4 @@
-# Train Simulator 🚂
+# Cool Train  🚂
 
 Un simulateur de train en 3D créé avec React, Three.js et React Three Fiber.
 
