@@ -1,36 +1,30 @@
-import React, { useRef, useState, useCallback } from 'react'
+import { useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Sky } from '@react-three/drei'
+import { OrbitControls } from '@react-three/drei'
 import { Train } from './components/Train'
 import { Track } from './components/Track'
+import { Environment } from './components/Environment'
 import { useKeyboard } from './hooks/useKeyboard'
+import { SceneType, Weather, TimeOfDay, ViewMode, OrbitControlsImpl } from './types'
+import * as THREE from 'three'
 
-type SceneType = 'plain' | 'mountain' | 'seaside'
-type Weather = 'sunny' | 'cloudy' | 'rainy'
-type TimeOfDay = 'morning' | 'noon' | 'evening' | 'night'
-export type ViewMode = 'thirdPerson' | 'cockpit' | 'pedestrian'
-
-function Scene() {
-  const controlsRef = useRef()
-  const [viewMode, setViewMode] = useState<ViewMode>('thirdPerson')
-  const [sceneType, setSceneType] = useState<SceneType>('plain')
-  const [weather, setWeather] = useState<Weather>('sunny')
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('noon')
+function Scene({
+  sceneType,
+  weather,
+  timeOfDay,
+  viewMode,
+  setViewMode
+}: {
+  sceneType: SceneType
+  weather: Weather
+  timeOfDay: TimeOfDay
+  viewMode: ViewMode
+  setViewMode: (mode: ViewMode) => void
+}) {
+  const controlsRef = useRef<OrbitControlsImpl>(null)
+  const trainRef = useRef<THREE.Group>(null)
+  const [getTerrainHeight, setTerrainHeight] = useState<((x: number, z: number) => number) | null>(null)
   useKeyboard()
-
-  const handleViewModeChange = useCallback((newMode: ViewMode) => {
-    setViewMode(newMode)
-  }, [])
-  
-  // Calcul de la position du soleil selon l'heure
-  const getSunPosition = () => {
-    switch(timeOfDay) {
-      case 'morning': return [5, 20, 100]
-      case 'noon': return [100, 100, 100]
-      case 'evening': return [200, 20, 100]
-      case 'night': return [100, -100, 100]
-    }
-  }
 
   return (
     <>
@@ -46,90 +40,105 @@ function Scene() {
         rotateSpeed={0.5}
         zoomSpeed={1}
         mouseButtons={{
-          LEFT: 0,     // 0 = ROTATE (rotation avec clic gauche)
-          MIDDLE: 2,   // 2 = ZOOM (zoom avec molette)
-          RIGHT: 1     // 1 = PAN (désactivé par enablePan=false)
-        }}
-        touches={{
-          ONE: 0,      // Un doigt pour rotation
-          TWO: 2       // Deux doigts pour zoom
+          LEFT: 0,
+          MIDDLE: 2,
+          RIGHT: 1
         }}
       />
-      <ambientLight intensity={timeOfDay === 'night' ? 0.1 : 0.5} />
-      <directionalLight 
-        position={getSunPosition()} 
-        intensity={weather === 'cloudy' ? 0.5 : 1} 
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+      <Environment 
+        sceneType={sceneType}
+        weather={weather}
+        timeOfDay={timeOfDay}
+        onTerrainGenerated={setTerrainHeight}
+        trainPosition={trainRef.current?.position}
       />
       <Train 
-        controlsRef={controlsRef} 
+        ref={trainRef}
+        controlsRef={controlsRef}
         viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
+        onViewModeChange={setViewMode}
+        getTerrainHeight={getTerrainHeight || undefined}
       />
-      <Track sceneType={sceneType} />
-      <Sky sunPosition={getSunPosition()} />
-      <fog attach="fog" args={[
-        '#ffffff',
-        weather === 'cloudy' ? 10 : 30,
-        weather === 'cloudy' ? 50 : 100
-      ]} />
+      {getTerrainHeight && (
+        <Track 
+          getTerrainHeight={getTerrainHeight}
+        />
+      )}
     </>
   )
 }
 
-function App() {
-  const [viewMode, setViewMode] = useState<ViewMode>('thirdPerson')
-  const [sceneType, setSceneType] = useState<SceneType>('plain')
+export default function App() {
+  const [sceneType, setSceneType] = useState<SceneType>('mountain')
   const [weather, setWeather] = useState<Weather>('sunny')
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('noon')
-  
+  const [viewMode, setViewMode] = useState<ViewMode>('thirdPerson')
+
   return (
-    <>
-      <div style={{ width: '100vw', height: '100vh', background: 'black' }}>
-        <Canvas shadows camera={{ position: [10, 5, 10], fov: 50 }}>
-          <Scene />
-        </Canvas>
-      </div>
-      <div style={{
-        position: 'fixed',
-        bottom: 20,
-        left: 0,
-        right: 0,
-        textAlign: 'center',
-        color: 'white',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        padding: '10px',
-        fontFamily: 'monospace'
+    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "black" }}>
+      <Canvas shadows>
+        <Scene
+          sceneType={sceneType}
+          weather={weather}
+          timeOfDay={timeOfDay}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+        />
+      </Canvas>
+      <div style={{ 
+        position: "absolute", 
+        bottom: "20px", 
+        left: "0", 
+        right: "0",
+        color: "white",
+        textAlign: "center",
+        zIndex: 10
       }}>
-        <div style={{ marginBottom: '10px' }}>
-          {viewMode === 'thirdPerson' && "Vue troisième personne - Maintenir le clic gauche pour faire pivoter la caméra"}
-          {viewMode === 'cockpit' && "Vue cockpit - Vous êtes aux commandes du train"}
-          {viewMode === 'pedestrian' && "Vue piéton - Regardez le train passer"}
+        <div style={{ marginBottom: "10px" }}>
+          {viewMode === "thirdPerson" &&
+            "Vue troisième personne - Maintenir le clic gauche pour faire pivoter la caméra"}
+          {viewMode === "cockpit" &&
+            "Vue cockpit - Vous êtes aux commandes du train"}
+          {viewMode === "pedestrian" && "Vue piéton - Regardez le train passer"}
         </div>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
-          <select 
-            value={sceneType} 
+        <div style={{ display: "flex", justifyContent: "center", gap: "20px" }}>
+          <select
+            value={sceneType}
             onChange={(e) => setSceneType(e.target.value as SceneType)}
-            style={{ background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid white', padding: '5px' }}
+            style={{
+              background: "rgba(0,0,0,0.5)",
+              color: "white",
+              border: "1px solid white",
+              padding: "5px",
+            }}
           >
             <option value="plain">Plaine</option>
             <option value="mountain">Montagnes</option>
             <option value="seaside">Bord de mer</option>
           </select>
-          <select 
-            value={weather} 
+          <select
+            value={weather}
             onChange={(e) => setWeather(e.target.value as Weather)}
-            style={{ background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid white', padding: '5px' }}
+            style={{
+              background: "rgba(0,0,0,0.5)",
+              color: "white",
+              border: "1px solid white",
+              padding: "5px",
+            }}
           >
             <option value="sunny">Ensoleillé</option>
             <option value="cloudy">Nuageux</option>
             <option value="rainy">Pluvieux</option>
           </select>
-          <select 
-            value={timeOfDay} 
+          <select
+            value={timeOfDay}
             onChange={(e) => setTimeOfDay(e.target.value as TimeOfDay)}
-            style={{ background: 'rgba(0,0,0,0.5)', color: 'white', border: '1px solid white', padding: '5px' }}
+            style={{
+              background: "rgba(0,0,0,0.5)",
+              color: "white",
+              border: "1px solid white",
+              padding: "5px",
+            }}
           >
             <option value="morning">Matin</option>
             <option value="noon">Midi</option>
@@ -137,12 +146,10 @@ function App() {
             <option value="night">Nuit</option>
           </select>
         </div>
-        <div style={{ fontSize: '0.8em', marginTop: '10px' }}>
+        <div style={{ fontSize: "0.8em", marginTop: "10px" }}>
           Appuyez sur C pour changer de vue
         </div>
       </div>
-    </>
-  )
+    </div>
+  );
 }
-
-export default App

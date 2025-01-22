@@ -19,3 +19,5 @@ git remote add origin https://github.com/tommybds/train-simulator.git
 
 # 7. Pousse les changements
 git push -u origin main
+
+npm install simplex-noise
