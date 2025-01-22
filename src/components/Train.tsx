@@ -1,11 +1,20 @@
-import React, { useRef, useState } from 'react'
+import React, { useRef, useCallback, useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
+import { OrbitControls } from '@react-three/drei'
+import { ViewMode } from '../App'
 
-export function Train() {
+interface TrainProps {
+  controlsRef: React.RefObject<OrbitControls>
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
+}
+
+export function Train({ controlsRef, viewMode, onViewModeChange }: TrainProps) {
   const trainRef = useRef<THREE.Group>(null)
-  const { gl, camera, controls } = useThree()
-  const [cameraMode, setCameraMode] = useState<'thirdPerson' | 'cockpit'>('thirdPerson')
+  const { gl, camera } = useThree()
+  const lastTrainPosition = useRef(new THREE.Vector3())
+  const pedestrianPosition = useRef(new THREE.Vector3(15, 2, 0))
   
   useFrame((state, delta) => {
     if (!trainRef.current) return
@@ -17,29 +26,68 @@ export function Train() {
       trainRef.current.position.z += delta * 5
     }
 
-    // Mise à jour de la cible des contrôles
-    if (controls) {
-      controls.target.copy(trainRef.current.position)
-      if (cameraMode === 'cockpit') {
+    const trainPosition = trainRef.current.position
+    
+    switch (viewMode) {
+      case 'thirdPerson':
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(trainPosition)
+          
+          const movement = new THREE.Vector3().subVectors(trainPosition, lastTrainPosition.current)
+          camera.position.add(movement)
+        }
+        lastTrainPosition.current.copy(trainPosition)
+        break
+        
+      case 'cockpit':
         camera.position.set(
-          trainRef.current.position.x,
-          trainRef.current.position.y + 2.3,
-          trainRef.current.position.z - 0.5
+          trainPosition.x,
+          trainPosition.y + 2.3,
+          trainPosition.z - 0.5
         )
-      }
+        camera.lookAt(new THREE.Vector3(
+          trainPosition.x,
+          trainPosition.y + 2.3,
+          trainPosition.z - 20
+        ))
+        break
+        
+      case 'pedestrian':
+        camera.position.copy(pedestrianPosition.current)
+        camera.lookAt(trainPosition)
+        break
     }
   })
 
-  // Gestion du changement de caméra
-  React.useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.code === 'KeyC') {
-        setCameraMode(prev => prev === 'thirdPerson' ? 'cockpit' : 'thirdPerson')
+  const handleKeyPress = useCallback((e: KeyboardEvent) => {
+    if (e.code === 'KeyC') {
+      const modes: ViewMode[] = ['thirdPerson', 'cockpit', 'pedestrian']
+      const currentIndex = modes.indexOf(viewMode)
+      const nextMode = modes[(currentIndex + 1) % modes.length]
+      
+      if (nextMode === 'thirdPerson' && trainRef.current) {
+        const pos = trainRef.current.position
+        camera.position.set(
+          pos.x + 10,
+          pos.y + 5,
+          pos.z + 10
+        )
+        if (controlsRef.current) {
+          controlsRef.current.target.copy(pos)
+        }
+        lastTrainPosition.current.copy(pos)
+      } else if (nextMode === 'pedestrian') {
+        camera.position.copy(pedestrianPosition.current)
       }
+      
+      onViewModeChange(nextMode)
     }
+  }, [camera, controlsRef, viewMode, onViewModeChange])
+
+  useEffect(() => {
     window.addEventListener('keypress', handleKeyPress)
     return () => window.removeEventListener('keypress', handleKeyPress)
-  }, [])
+  }, [handleKeyPress])
 
   return (
     <group ref={trainRef}>
