@@ -33,12 +33,24 @@ export function useKeyboard() {
       }
     }
 
+    const handleMouseDown = () => {
+      gl.userData.isDragging = true
+    }
+
+    const handleMouseUp = () => {
+      gl.userData.isDragging = false
+    }
+
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('mouseup', handleMouseUp)
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('mouseup', handleMouseUp)
     }
   }, [gl])
 }
