@@ -6,7 +6,7 @@ import { useKeyboardControls } from '@react-three/drei'
 import { createNoise2D } from 'simplex-noise'
 
 export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSpeed = 0.5 }: TrainProps) {
-  const trainRef = useRef<THREE.Mesh>(null)
+  const trainRef = useRef<THREE.Group>(null)
   const pathPoints = useRef<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const railsRef = useRef<THREE.Group>(null)
   const speed = useRef(initialSpeed)
@@ -108,10 +108,31 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
     }
 
+    // Nettoyage des points de chemin trop éloignés
+    const cleanupDistance = 200 // Distance de nettoyage
+    const currentTrainPoint = pathPoints.current[Math.floor(currentPosition.current)]
+    if (currentTrainPoint && pathPoints.current.length > 200) { // Garder au moins 200 points
+      const pointsToRemove = []
+      for (let i = 0; i < pathPoints.current.length - 100; i++) { // Garder au moins 100 points devant
+        const point = pathPoints.current[i]
+        const distance = point.distanceTo(currentTrainPoint)
+        if (distance > cleanupDistance) {
+          pointsToRemove.push(i)
+        } else {
+          break // Les points sont ordonnés, donc on peut arrêter dès qu'on trouve un point assez proche
+        }
+      }
+      if (pointsToRemove.length > 0) {
+        pathPoints.current = pathPoints.current.slice(pointsToRemove.length)
+        currentPosition.current -= pointsToRemove.length
+        createRailroad() // Recréer les rails après le nettoyage
+      }
+    }
+
     // Génère une nouvelle section quand on approche de la fin
     if (currentPosition.current >= pathPoints.current.length - 100) {
       generateNewPathSection()
-      createRailroad() // Mise à jour des rails après génération du path
+      createRailroad()
     }
 
     currentPosition.current += speed.current
@@ -140,6 +161,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
       const pitchQuaternion = new THREE.Quaternion().setFromRotationMatrix(pitchMatrix)
       targetRotation.multiply(pitchQuaternion)
       
+      // Rotation supplémentaire de 180 degrés pour orienter le train dans la bonne direction
+      const flipRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI + Math.PI/2, 0))
+      targetRotation.multiply(flipRotation)
+      
       // Interpolation douce de la rotation
       currentRotation.current.slerp(targetRotation, delta * 5)
       trainRef.current.quaternion.copy(currentRotation.current)
@@ -165,9 +190,9 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
       lastPoint.z + Math.sin(newAngle) * sectionLength
     )
 
-    // Calcul de la hauteur avec une variation plus douce
+    // Augmentation des variations de hauteur
     const currentHeight = lastPoint.y
-    const heightVariation = 2
+    const heightVariation = 5 // Augmenté de 2 à 5
     const targetHeight = currentHeight + (Math.random() * heightVariation * 2 - heightVariation)
     endPoint.y = targetHeight
 
@@ -176,8 +201,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
     const points: THREE.Vector3[] = []
     for (let i = 1; i <= numPoints; i++) {
       const t = i / numPoints
-      // Utilisation d'une fonction de lissage pour la hauteur
-      const smoothT = t * t * (3 - 2 * t) // Fonction de lissage Hermite
+      const smoothT = t * t * (3 - 2 * t)
       const x = lastPoint.x + (endPoint.x - lastPoint.x) * t
       const z = lastPoint.z + (endPoint.z - lastPoint.z) * t
       const y = currentHeight + (targetHeight - currentHeight) * smoothT
@@ -206,10 +230,67 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
   return (
     <>
       <group ref={railsRef} />
-      <mesh ref={trainRef}>
-        <boxGeometry args={[4, 2, 2]} />
-        <meshStandardMaterial color="blue" />
-      </mesh>
+      <group ref={trainRef}>
+        {/* Locomotive */}
+        <mesh position={[0, 1.2, 0]}>
+          {/* Corps principal */}
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[3, 1.6, 1.8]} />
+            <meshStandardMaterial color="#FFD700" /> {/* Jaune doré */}
+          </mesh>
+          
+          {/* Cabine */}
+          <mesh position={[1, 0.6, 0]}>
+            <boxGeometry args={[1, 0.8, 1.6]} />
+            <meshStandardMaterial color="#FFD700" />
+          </mesh>
+
+          {/* Cheminée */}
+          <mesh position={[-0.8, 0.9, 0]}>
+            <cylinderGeometry args={[0.2, 0.3, 0.8]} />
+            <meshStandardMaterial color="#424242" />
+          </mesh>
+
+          {/* Roues */}
+          <group position={[0, -0.8, 0]}>
+            {/* Roues avant */}
+            <mesh position={[-1, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.4, 0.4, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+            <mesh position={[-1, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.4, 0.4, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+
+            {/* Roues milieu */}
+            <mesh position={[0, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.5, 0.5, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+            <mesh position={[0, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.5, 0.5, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+
+            {/* Roues arrière */}
+            <mesh position={[1, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.4, 0.4, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+            <mesh position={[1, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.4, 0.4, 0.2]} />
+              <meshStandardMaterial color="#424242" />
+            </mesh>
+          </group>
+
+          {/* Détails décoratifs */}
+          <mesh position={[-1.4, -0.2, 0]}>
+            <boxGeometry args={[0.4, 0.4, 2]} />
+            <meshStandardMaterial color="#424242" />
+          </mesh>
+        </mesh>
+      </group>
     </>
   )
 }
