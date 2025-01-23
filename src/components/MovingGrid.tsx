@@ -16,19 +16,21 @@ export function MovingGrid({ position, size = 200, divisions = 120, points }: Mo
     const worldX = x + gridPosition.x
     const worldZ = z + gridPosition.z
     
-    const scale1 = 0.003
-    const scale2 = 0.006
-    const scale3 = 0.012
+    // Augmentation des échelles et amplitudes pour plus de relief
+    const scale1 = 0.005
+    const scale2 = 0.015
+    const scale3 = 0.03
     
-    const noise1 = noise2D(worldX * scale1, worldZ * scale1) * 6
-    const noise2 = noise2D(worldX * scale2, worldZ * scale2) * 3
-    const noise3 = noise2D(worldX * scale3, worldZ * scale3) * 1.5
+    const noise1 = noise2D(worldX * scale1, worldZ * scale1) * 15
+    const noise2 = noise2D(worldX * scale2, worldZ * scale2) * 8
+    const noise3 = noise2D(worldX * scale3, worldZ * scale3) * 4
 
-    let height = noise1 + noise2 + noise3
+    // Permettre des valeurs négatives pour l'eau
+    let height = noise1 + noise2 + noise3 - 5 // Décalage vers le bas pour avoir des zones sous 0
 
     if (points && points.length > 0) {
       let minDist = Infinity
-      let pathHeight = Math.max(height, 0)
+      let pathHeight = height
 
       for (const point of points) {
         const dx = worldX - point.x
@@ -37,7 +39,8 @@ export function MovingGrid({ position, size = 200, divisions = 120, points }: Mo
 
         if (dist < minDist) {
           minDist = dist
-          pathHeight = Math.max(point.y, 0)
+          // Limite la hauteur du chemin entre 0 et 30
+          pathHeight = Math.min(Math.max(point.y, 0), 30)
         }
       }
 
@@ -46,7 +49,7 @@ export function MovingGrid({ position, size = 200, divisions = 120, points }: Mo
       height = THREE.MathUtils.lerp(height, pathHeight, influence)
     }
 
-    return Math.max(height, 0)
+    return height // Ne pas forcer à 0 pour permettre les zones d'eau
   }
 
   // Création de la grille
