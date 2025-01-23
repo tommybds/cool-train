@@ -1,9 +1,7 @@
 import { useEffect } from 'react'
-import { useThree } from '@react-three/fiber'
+import * as THREE from 'three'
 
-export function useKeyboard() {
-  const { gl } = useThree()
-
+export const useKeyboard = (gl: THREE.WebGLRenderer) => {
   useEffect(() => {
     gl.userData = gl.userData || {}
 
@@ -16,6 +14,12 @@ export function useKeyboard() {
         case 'ArrowDown':
         case 'KeyS':
           gl.userData.backward = true
+          break
+        case 'KeyA':
+          gl.userData.addWagon = true
+          break
+        case 'KeyR':
+          gl.userData.removeWagon = true
           break
       }
     }
@@ -30,27 +34,21 @@ export function useKeyboard() {
         case 'KeyS':
           gl.userData.backward = false
           break
+        case 'KeyA':
+          gl.userData.addWagon = false
+          break
+        case 'KeyR':
+          gl.userData.removeWagon = false
+          break
       }
-    }
-
-    const handleMouseDown = () => {
-      gl.userData.isDragging = true
-    }
-
-    const handleMouseUp = () => {
-      gl.userData.isDragging = false
     }
 
     window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('mousedown', handleMouseDown)
-    window.addEventListener('mouseup', handleMouseUp)
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('mousedown', handleMouseDown)
-      window.removeEventListener('mouseup', handleMouseUp)
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('keyup', handleKeyUp)
     }
   }, [gl])
 }

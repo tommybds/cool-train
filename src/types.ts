@@ -1,9 +1,19 @@
 import * as THREE from 'three'
 
+declare global {
+  interface Window {
+    wagonSounds: {
+      add: HTMLAudioElement
+      remove: HTMLAudioElement
+    }
+  }
+}
+
 export interface TrainProps {
   onPathUpdate?: (points: THREE.Vector3[]) => void
   onPositionUpdate?: (position: THREE.Vector3) => void
   onSpeedUpdate?: (speed: number) => void
+  onWagonCountUpdate?: (count: number) => void
   initialSpeed?: number
 }
 
