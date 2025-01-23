@@ -12,7 +12,7 @@ import { Ground } from './components/Ground'
 export default function App() {
   const [pathPoints, setPathPoints] = useState<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const [trainPosition, setTrainPosition] = useState(new THREE.Vector3(0, 0, 0))
-  const [speed, setSpeed] = useState(0.1)
+  const [speed, setSpeed] = useState(0.91)
   const [wagonCount, setWagonCount] = useState(3)
 
   // Création des sons
@@ -31,6 +31,7 @@ export default function App() {
     }
 
     return () => {
+      
       delete window.wagonSounds
     }
   }, [])
@@ -80,8 +81,8 @@ export default function App() {
       </div>
       <KeyboardControls
         map={[
-          { name: 'speedUp', keys: ['ArrowUp', 'KeyW'] },
-          { name: 'speedDown', keys: ['ArrowDown', 'KeyS'] },
+          { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
+          { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
           { name: 'addWagon', keys: ['KeyA'] },
           { name: 'removeWagon', keys: ['KeyR'] }
         ]}

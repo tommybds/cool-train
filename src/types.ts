@@ -11,7 +11,7 @@ declare global {
 
 export interface TrainProps {
   onPathUpdate?: (points: THREE.Vector3[]) => void
-  onPositionUpdate?: (position: THREE.Vector3) => void
+  onPositionUpdate?: (position: THREE.Vector3, distance: number) => void
   onSpeedUpdate?: (speed: number) => void
   onWagonCountUpdate?: (count: number) => void
   initialSpeed?: number

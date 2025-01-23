@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { TrainProps } from '../types'
@@ -33,11 +33,11 @@ function Wagon({ position, rotation, color, scale = 1, opacity = 1 }: WagonProps
           <mesh position={[0.8, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.4, 0.4, 0.2]} />
             <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-          </mesh>
+      </mesh>
           <mesh position={[0.8, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.4, 0.4, 0.2]} />
             <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-          </mesh>
+      </mesh>
         </group>
       </mesh>
     </group>
@@ -95,26 +95,32 @@ function Locomotive() {
           <meshStandardMaterial color="#424242" />
         </mesh>
       </mesh>
-    </group>
+          </group>
   )
 }
 
-export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCountUpdate, initialSpeed = 0.5 }: TrainProps) {
+export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCountUpdate, initialSpeed = 0 }: TrainProps) {
   const trainRef = useRef<THREE.Group>(null)
   const pathPoints = useRef<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const railsRef = useRef<THREE.Group>(null)
-  const speed = useRef(initialSpeed)
+  const speed = useRef(0)
   const currentPosition = useRef(0)
   const lastAngle = useRef(0)
   const currentRotation = useRef(new THREE.Euler())
-  const wagonsData = useRef<{ position: THREE.Vector3, rotation: THREE.Euler, scale: number, opacity: number }[]>([])
   const lastKeyPress = useRef<number>(0)
 
-  const WAGON_SPACING = 2
+  // Utiliser useState pour les wagons pour forcer le re-rendu
+  const [wagons, setWagons] = useState<{ position: THREE.Vector3, rotation: THREE.Euler, scale: number, opacity: number }[]>([])
+
+  const WAGON_SPACING = 1.5
   const WAGON_COLORS = ['#4a90e2', '#e24a4a', '#4ae24a', '#e2e24a', '#4ae2e2', '#e24ae2']
   const MAX_WAGONS = 10
   const KEY_COOLDOWN = 200
   const ANIMATION_DURATION = 500
+  const MIN_SPEED = 0
+  const MAX_SPEED = 2.0
+  const SPEED_INCREMENT = 0.5
+  const MOVEMENT_SPEED = 5
 
   const [, get] = useKeyboardControls()
 
@@ -146,7 +152,6 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       const up = new THREE.Vector3(0, 1, 0)
       const right = direction.clone().cross(up).normalize()
 
-      // Rails
       const railGeometry = new THREE.BoxGeometry(railWidth, railHeight, length)
       const railMaterial = new THREE.MeshStandardMaterial({ color: '#666', metalness: 0.8, roughness: 0.4 })
 
@@ -162,7 +167,6 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       rightRail.position.y += railHeight/2
       rightRail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction)
 
-      // Traverses
       const numSleepers = Math.floor(length / sleeperSpacing)
       for (let j = 0; j <= numSleepers; j++) {
         const sleeperGeometry = new THREE.BoxGeometry(sleeperLength, sleeperHeight, sleeperWidth)
@@ -186,30 +190,66 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
   }
 
   useEffect(() => {
+    // Générer les deux premières sections du chemin
+    generateNewPathSection()
+    generateNewPathSection()
     createRailroad()
-  }, [pathPoints.current])
 
-  useEffect(() => {
-    console.log('Train component initialized')
-    console.log('Initializing wagons...')
-    
-    // Position initiale de la locomotive
-    const initialPosition = new THREE.Vector3(0, 0, 0)
-    const initialDirection = new THREE.Vector3(-1, 0, 0) // Direction vers l'arrière
-    
-    wagonsData.current = Array(3).fill(0).map((_, index) => {
-      console.log(`Creating wagon ${index}`)
-      const position = initialPosition.clone().add(initialDirection.clone().multiplyScalar(WAGON_SPACING * (index + 1)))
-      return {
-        position,
-        rotation: new THREE.Euler(0, Math.PI + Math.PI/2, 0), // Même rotation initiale que la locomotive
-        scale: 1,
-        opacity: 1
+    // Positionner le train au début de la deuxième section
+    currentPosition.current = 10
+
+    // S'assurer que le chemin est généré avant de créer les wagons
+    if (pathPoints.current.length >= 2) {
+      console.log('Initializing wagons, path length:', pathPoints.current.length)
+      
+      // Initialisation des wagons avec des positions correctes
+      const initialWagons = Array(3).fill(0).map((_, index) => {
+        const wagonOffset = (index + 1) * WAGON_SPACING
+        const wagonPosition = currentPosition.current - wagonOffset
+        console.log(`Initial wagon ${index} position:`, wagonPosition)
+
+        const wagonPointIndex = Math.floor(Math.abs(wagonPosition)) % pathPoints.current.length
+        const wagonNextPointIndex = (wagonPointIndex + 1) % pathPoints.current.length
+        const wagonFraction = wagonPosition - Math.floor(wagonPosition)
+
+        console.log(`Wagon ${index} indices:`, wagonPointIndex, wagonNextPointIndex)
+
+        const wagonPoint = pathPoints.current[wagonPointIndex]
+        const wagonNextPoint = pathPoints.current[wagonNextPointIndex]
+
+        const position = new THREE.Vector3()
+        const rotation = new THREE.Euler()
+
+        if (wagonPoint && wagonNextPoint) {
+          position.lerpVectors(wagonPoint, wagonNextPoint, wagonFraction)
+          console.log(`Wagon ${index} initial position:`, position)
+
+          const direction = wagonNextPoint.clone().sub(wagonPoint).normalize()
+          const up = new THREE.Vector3(0, 1, 0)
+          const matrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), direction, up)
+          rotation.setFromRotationMatrix(matrix)
+
+          const heightDiff = wagonNextPoint.y - wagonPoint.y
+          const distance = wagonPoint.distanceTo(wagonNextPoint)
+          const angle = Math.atan2(heightDiff, distance)
+          rotation.x += angle
+          rotation.y += Math.PI + Math.PI/2
+        }
+
+        return {
+          position,
+          rotation,
+          scale: 1,
+          opacity: 1
+        }
+      })
+
+      console.log('Setting initial wagons:', initialWagons)
+      setWagons(initialWagons)
+
+      if (onWagonCountUpdate) {
+        onWagonCountUpdate(3)
       }
-    })
-    if (onWagonCountUpdate) {
-      console.log('Initial wagon count update:', wagonsData.current.length)
-      onWagonCountUpdate(wagonsData.current.length)
     }
   }, [])
 
@@ -233,10 +273,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     const targetHeight = Math.min(Math.max(rawTargetHeight, 0), 50)
     endPoint.y = targetHeight
 
-    const numPoints = 10
-    const points: THREE.Vector3[] = []
-    for (let i = 1; i <= numPoints; i++) {
-      const t = i / numPoints
+  const numPoints = 10
+  const points: THREE.Vector3[] = []
+  for (let i = 1; i <= numPoints; i++) {
+    const t = i / numPoints
       const smoothT = t * t * (3 - 2 * t)
       const x = lastPoint.x + (endPoint.x - lastPoint.x) * t
       const z = lastPoint.z + (endPoint.z - lastPoint.z) * t
@@ -251,207 +291,213 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     }
   }
 
-  // Génération initiale du chemin
-  useEffect(() => {
-    for (let i = 0; i < 10; i++) {
-      generateNewPathSection()
-    }
-  }, [])
-
   const addWagon = () => {
-    console.log('addWagon called')
-    if (wagonsData.current.length < MAX_WAGONS) {
-      const lastWagonIndex = wagonsData.current.length
-      const position = new THREE.Vector3(-2 - (lastWagonIndex * WAGON_SPACING), 0, 0)
-      
-      console.log(`Adding wagon at index ${lastWagonIndex}`)
-      wagonsData.current.push({
+    if (wagons.length < MAX_WAGONS) {
+      const wagonOffset = (wagons.length + 1) * WAGON_SPACING
+      const wagonPosition = currentPosition.current - wagonOffset
+      const wagonPointIndex = Math.floor(Math.abs(wagonPosition)) % pathPoints.current.length
+      const wagonNextPointIndex = (wagonPointIndex + 1) % pathPoints.current.length
+      const wagonFraction = wagonPosition - Math.floor(wagonPosition)
+
+      const wagonPoint = pathPoints.current[wagonPointIndex]
+      const wagonNextPoint = pathPoints.current[wagonNextPointIndex]
+
+      const position = new THREE.Vector3()
+      const rotation = new THREE.Euler()
+
+      if (wagonPoint && wagonNextPoint) {
+        position.lerpVectors(wagonPoint, wagonNextPoint, wagonFraction)
+
+        const direction = wagonNextPoint.clone().sub(wagonPoint).normalize()
+        const up = new THREE.Vector3(0, 1, 0)
+        const matrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), direction, up)
+        rotation.setFromRotationMatrix(matrix)
+
+        const heightDiff = wagonNextPoint.y - wagonPoint.y
+        const distance = wagonPoint.distanceTo(wagonNextPoint)
+        const angle = Math.atan2(heightDiff, distance)
+        rotation.x += angle
+        rotation.y += Math.PI + Math.PI/2
+      }
+
+      const newWagon = {
         position,
-        rotation: new THREE.Euler(),
+        rotation,
         scale: 0,
         opacity: 0
-      })
-      
+      }
+
+      setWagons(prev => [...prev, newWagon])
+
       if (window.wagonSounds?.add) {
-        console.log('Playing add sound')
         window.wagonSounds.add.play()
       }
-      
+
       setTimeout(() => {
-        console.log(`Completing wagon ${lastWagonIndex} animation`)
-        if (wagonsData.current[lastWagonIndex]) {
-          wagonsData.current[lastWagonIndex].scale = 1
-          wagonsData.current[lastWagonIndex].opacity = 1
-        }
+        setWagons(prev => {
+          const updated = [...prev]
+          const lastIndex = updated.length - 1
+          if (updated[lastIndex]) {
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              scale: 1,
+              opacity: 1
+            }
+          }
+          return updated
+        })
       }, ANIMATION_DURATION)
 
       if (onWagonCountUpdate) {
-        console.log('Updating wagon count:', wagonsData.current.length)
-        onWagonCountUpdate(wagonsData.current.length)
+        onWagonCountUpdate(wagons.length + 1)
       }
-    } else {
-      console.log('Maximum number of wagons reached')
     }
   }
 
   const removeWagon = () => {
-    console.log('removeWagon called')
-    if (wagonsData.current.length > 0) {
-      const lastIndex = wagonsData.current.length - 1
-      
-      console.log(`Removing wagon at index ${lastIndex}`)
+    if (wagons.length > 1) {  // Changé de 0 à 1 pour garder au moins un wagon
       if (window.wagonSounds?.remove) {
-        console.log('Playing remove sound')
         window.wagonSounds.remove.play()
       }
-      
-      if (wagonsData.current[lastIndex]) {
-        wagonsData.current[lastIndex].scale = 0
-        wagonsData.current[lastIndex].opacity = 0
-      }
-      
+
+      setWagons(prev => {
+        const updated = [...prev]
+        const lastIndex = updated.length - 1
+        if (updated[lastIndex]) {
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+            scale: 0,
+            opacity: 0
+          }
+        }
+        return updated
+      })
+
       setTimeout(() => {
-        console.log('Completing wagon removal')
-        wagonsData.current.pop()
+        setWagons(prev => prev.slice(0, -1))
         if (onWagonCountUpdate) {
-          console.log('Updating wagon count:', wagonsData.current.length)
-          onWagonCountUpdate(wagonsData.current.length)
+          onWagonCountUpdate(wagons.length - 1)
         }
       }, ANIMATION_DURATION)
-    } else {
-      console.log('No wagons to remove')
     }
   }
 
   useFrame((_, delta) => {
-    if (!trainRef.current) return
+    if (!trainRef.current || pathPoints.current.length < 2) return
 
     const keys = get()
     const currentTime = Date.now()
 
     // Gestion de la vitesse
-    if (keys.speedUp) {
-      speed.current = Math.min(speed.current + delta * 0.5, 2.0)
+    if (keys.forward) {
+      speed.current = Math.min(speed.current + SPEED_INCREMENT * delta, MAX_SPEED)
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
     }
-    if (keys.speedDown) {
-      speed.current = Math.max(speed.current - delta * 0.5, 0)
+    if (keys.backward) {
+      speed.current = Math.max(speed.current - SPEED_INCREMENT * delta, MIN_SPEED)
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
     }
 
-    // Gestion des wagons avec cooldown
     if (currentTime - lastKeyPress.current > KEY_COOLDOWN) {
       if (keys.addWagon) {
-        console.log('Add wagon key pressed')
         addWagon()
         lastKeyPress.current = currentTime
       }
       if (keys.removeWagon) {
-        console.log('Remove wagon key pressed')
         removeWagon()
         lastKeyPress.current = currentTime
       }
     }
 
-    // Ne pas mettre à jour les positions si la vitesse est 0
-    if (speed.current === 0) return
+    // Mise à jour de la position du train
+    const movement = speed.current * delta * MOVEMENT_SPEED
+    currentPosition.current += movement
 
-    // Nettoyage des points de chemin trop éloignés
-    const cleanupDistance = 200
-    const currentTrainPoint = pathPoints.current[Math.floor(currentPosition.current)]
-    if (currentTrainPoint && pathPoints.current.length > 200) {
-      const pointsToRemove = []
-      for (let i = 0; i < pathPoints.current.length - 100; i++) {
-        const point = pathPoints.current[i]
-        const distance = point.distanceTo(currentTrainPoint)
-        if (distance > cleanupDistance) {
-          pointsToRemove.push(i)
-        } else {
-          break
-        }
-      }
-      if (pointsToRemove.length > 0) {
-        pathPoints.current = pathPoints.current.slice(pointsToRemove.length)
-        currentPosition.current -= pointsToRemove.length
-      }
-    }
-
-    // Génère une nouvelle section quand on approche de la fin
-    if (currentPosition.current >= pathPoints.current.length - 100) {
+    // Génération de nouvelles sections si nécessaire
+    if (currentPosition.current >= pathPoints.current.length - 20) {
       generateNewPathSection()
+      createRailroad()
     }
 
-    // Mise à jour des positions
-    currentPosition.current += speed.current
-    const pointIndex = Math.floor(currentPosition.current)
-    const nextPointIndex = Math.min(pointIndex + 1, pathPoints.current.length - 1)
-    const fraction = currentPosition.current - pointIndex
+    // Position et rotation du train
+    const trainPointIndex = Math.floor(currentPosition.current) % pathPoints.current.length
+    const trainNextPointIndex = (trainPointIndex + 1) % pathPoints.current.length
+    const trainFraction = currentPosition.current - Math.floor(currentPosition.current)
 
-    const currentPoint = pathPoints.current[pointIndex]
-    const nextPoint = pathPoints.current[nextPointIndex]
+    const currentPoint = pathPoints.current[trainPointIndex]
+    const nextPoint = pathPoints.current[trainNextPointIndex]
 
     if (currentPoint && nextPoint && trainRef.current) {
-      // Position de la locomotive
-      trainRef.current.position.lerpVectors(currentPoint, nextPoint, fraction)
+      // Mise à jour de la position et rotation du train
+      trainRef.current.position.lerpVectors(currentPoint, nextPoint, trainFraction)
 
-      // Rotation de la locomotive
       const direction = nextPoint.clone().sub(currentPoint).normalize()
       const up = new THREE.Vector3(0, 1, 0)
       const matrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), direction, up)
       const targetRotation = new THREE.Euler().setFromRotationMatrix(matrix)
 
-      // Ajustement de la rotation pour l'inclinaison en montée/descente
       const heightDiff = nextPoint.y - currentPoint.y
       const distance = currentPoint.distanceTo(nextPoint)
       const angle = Math.atan2(heightDiff, distance)
       targetRotation.x += angle
-
-      // Rotation supplémentaire de 180 degrés pour orienter le train dans la bonne direction
       targetRotation.y += Math.PI + Math.PI/2
 
-      // Interpolation de la rotation
       currentRotation.current.x += (targetRotation.x - currentRotation.current.x) * delta * 10
       currentRotation.current.y += (targetRotation.y - currentRotation.current.y) * delta * 10
       currentRotation.current.z += (targetRotation.z - currentRotation.current.z) * delta * 10
       trainRef.current.rotation.copy(currentRotation.current)
 
       // Mise à jour des wagons
-      let previousPosition = trainRef.current.position.clone()
-      let previousDirection = direction.clone()
+      if (wagons.length > 0) {  // Ne mettre à jour que s'il y a des wagons
+        const updatedWagons = wagons.map((wagon, index) => {
+          const wagonOffset = (index + 1) * WAGON_SPACING
+          const wagonPosition = currentPosition.current - wagonOffset
+          const wagonPointIndex = Math.floor(Math.abs(wagonPosition)) % pathPoints.current.length
+          const wagonNextPointIndex = (wagonPointIndex + 1) % pathPoints.current.length
+          const wagonFraction = wagonPosition - Math.floor(wagonPosition)
 
-      for (let i = 0; i < wagonsData.current.length; i++) {
-        // Calcul de la position cible du wagon
-        const targetPosition = previousPosition.clone().add(previousDirection.multiplyScalar(-WAGON_SPACING))
-        
-        // Interpolation douce de la position
-        wagonsData.current[i].position.lerp(targetPosition, delta * 5)
-        
-        // Calcul de la direction pour le prochain wagon
-        previousDirection = targetPosition.clone().sub(previousPosition).normalize()
-        
-        // Calcul de la rotation du wagon
-        const wagonMatrix = new THREE.Matrix4().lookAt(previousPosition, wagonsData.current[i].position, up)
-        const wagonTargetRotation = new THREE.Euler().setFromRotationMatrix(wagonMatrix)
-        
-        // Ajustement de la rotation pour l'inclinaison
-        const wagonHeightDiff = wagonsData.current[i].position.y - previousPosition.y
-        const wagonDistance = wagonsData.current[i].position.distanceTo(previousPosition)
-        const wagonAngle = Math.atan2(wagonHeightDiff, wagonDistance)
-        wagonTargetRotation.x += wagonAngle
-        wagonTargetRotation.y += Math.PI + Math.PI/2
+          const wagonPoint = pathPoints.current[wagonPointIndex]
+          const wagonNextPoint = pathPoints.current[wagonNextPointIndex]
 
-        // Interpolation douce de la rotation
-        const rotationSpeed = 5 - (i * 0.5) // Ralentit progressivement la rotation pour les wagons suivants
-        wagonsData.current[i].rotation.x += (wagonTargetRotation.x - wagonsData.current[i].rotation.x) * delta * rotationSpeed
-        wagonsData.current[i].rotation.y += (wagonTargetRotation.y - wagonsData.current[i].rotation.y) * delta * rotationSpeed
-        wagonsData.current[i].rotation.z += (wagonTargetRotation.z - wagonsData.current[i].rotation.z) * delta * rotationSpeed
-        
-        // Prépare pour le prochain wagon
-        previousPosition = wagonsData.current[i].position.clone()
+          if (wagonPoint && wagonNextPoint) {
+            const newPosition = new THREE.Vector3()
+            newPosition.lerpVectors(wagonPoint, wagonNextPoint, wagonFraction)
+
+            const wagonDirection = wagonNextPoint.clone().sub(wagonPoint).normalize()
+            const wagonMatrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), wagonDirection, up)
+            const wagonRotation = new THREE.Euler().setFromRotationMatrix(wagonMatrix)
+
+            const wagonHeightDiff = wagonNextPoint.y - wagonPoint.y
+            const wagonDistance = wagonPoint.distanceTo(wagonNextPoint)
+            const wagonAngle = Math.atan2(wagonHeightDiff, wagonDistance)
+            wagonRotation.x += wagonAngle
+            wagonRotation.y += Math.PI + Math.PI/2
+
+            return {
+              ...wagon,
+              position: newPosition,
+              rotation: wagonRotation
+            }
+          }
+          return wagon
+        })
+
+        setWagons(updatedWagons)
       }
 
       if (onPositionUpdate) {
-        onPositionUpdate(trainRef.current.position.clone())
+        const distance = Math.floor(currentPosition.current)
+        onPositionUpdate(trainRef.current.position.clone(), distance)
+      }
+    }
+
+    // Nettoyage des points anciens
+    if (pathPoints.current.length > 200) {
+      const safetyMargin = Math.floor(currentPosition.current - WAGON_SPACING * (wagons.length + 1))
+      if (safetyMargin > 100) {
+        pathPoints.current = pathPoints.current.slice(safetyMargin - 50)
+        currentPosition.current -= (safetyMargin - 50)
+        createRailroad()
       }
     }
   })
@@ -462,7 +508,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       <group ref={trainRef}>
         <Locomotive />
       </group>
-      {wagonsData.current.map((wagon, index) => (
+      {wagons.map((wagon, index) => (
         <Wagon
           key={`wagon-${index}`}
           position={wagon.position}
