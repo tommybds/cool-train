@@ -9,7 +9,7 @@ import * as THREE from 'three'
 export default function App() {
   const [pathPoints, setPathPoints] = useState<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const [trainPosition, setTrainPosition] = useState(new THREE.Vector3(0, 0, 0))
-  const [speed, setSpeed] = useState(0.5)
+  const [speed, setSpeed] = useState(0.1)
 
   const handlePathUpdate = (points: THREE.Vector3[]) => {
     setPathPoints([...points])

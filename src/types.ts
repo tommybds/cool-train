@@ -17,3 +17,12 @@ export interface MovingGridProps {
 export interface PathProps {
   points: THREE.Vector3[]
 }
+
+export interface EnvironmentProps {
+  sceneType: 'mountain' | 'plain'
+  weather: 'clear' | 'cloudy' | 'rainy'
+  timeOfDay: 'morning' | 'noon' | 'evening' | 'night'
+  onTerrainGenerated?: (getHeight: (x: number, z: number) => number) => void
+  trainPosition?: THREE.Vector3
+  trackPath?: THREE.CurvePath<THREE.Vector3>
+}
