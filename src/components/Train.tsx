@@ -8,6 +8,7 @@ import { createNoise2D } from 'simplex-noise'
 export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSpeed = 0.5 }: TrainProps) {
   const trainRef = useRef<THREE.Mesh>(null)
   const pathPoints = useRef<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
+  const railsRef = useRef<THREE.Group>(null)
   const speed = useRef(initialSpeed)
   const currentPosition = useRef(0)
   const lastAngle = useRef(0)
@@ -16,22 +17,87 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
 
   const [, get] = useKeyboardControls()
 
-  const getTerrainHeight = (x: number, z: number): number => {
-    const scale1 = 0.01
-    const scale2 = 0.02
-    const scale3 = 0.04
+  const createRailroad = () => {
+    if (!railsRef.current) return
     
-    const noise1 = noise2D.current(x * scale1, z * scale1) * 20
-    const noise2 = noise2D.current(x * scale2, z * scale2) * 10
-    const noise3 = noise2D.current(x * scale3, z * scale3) * 5
+    // Nettoyage des anciens rails
+    while(railsRef.current.children.length > 0) {
+      railsRef.current.remove(railsRef.current.children[0])
+    }
 
-    return noise1 + noise2 + noise3
+    const points = pathPoints.current
+    if (points.length < 2) return
+
+    // Paramètres des rails
+    const railWidth = 0.2
+    const railHeight = 0.1
+    const railSpacing = 1.5
+    const sleeperWidth = 2.2
+    const sleeperHeight = 0.2
+    const sleeperLength = 0.8
+    const sleeperSpacing = 2
+
+    // Création des rails
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i]
+      const end = points[i + 1]
+      const direction = end.clone().sub(start)
+      const length = direction.length()
+      direction.normalize()
+
+      // Calcul des vecteurs perpendiculaires pour positionner les rails
+      const up = new THREE.Vector3(0, 1, 0)
+      const right = direction.clone().cross(up).normalize()
+
+      // Rails
+      const railGeometry = new THREE.BoxGeometry(railWidth, railHeight, length)
+      const railMaterial = new THREE.MeshStandardMaterial({ color: '#666', metalness: 0.8, roughness: 0.4 })
+
+      // Rail gauche
+      const leftRail = new THREE.Mesh(railGeometry, railMaterial)
+      leftRail.position.copy(start.clone().add(end).multiplyScalar(0.5))
+      leftRail.position.add(right.clone().multiplyScalar(-railSpacing/2))
+      leftRail.position.y += railHeight/2
+      leftRail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction)
+
+      // Rail droit
+      const rightRail = new THREE.Mesh(railGeometry, railMaterial)
+      rightRail.position.copy(start.clone().add(end).multiplyScalar(0.5))
+      rightRail.position.add(right.clone().multiplyScalar(railSpacing/2))
+      rightRail.position.y += railHeight/2
+      rightRail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction)
+
+      // Traverses
+      const numSleepers = Math.floor(length / sleeperSpacing)
+      for (let j = 0; j <= numSleepers; j++) {
+        const sleeperGeometry = new THREE.BoxGeometry(sleeperLength, sleeperHeight, sleeperWidth)
+        const sleeperMaterial = new THREE.MeshStandardMaterial({ color: '#4a3728' })
+        const sleeper = new THREE.Mesh(sleeperGeometry, sleeperMaterial)
+        
+        const t = j / numSleepers
+        const pos = start.clone().lerp(end, t)
+        sleeper.position.copy(pos)
+        sleeper.position.y += sleeperHeight/2
+        
+        // Utilisation du vecteur right pour orienter les traverses perpendiculairement aux rails
+        const sleeperDirection = right
+        sleeper.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sleeperDirection)
+        
+        railsRef.current.add(sleeper)
+      }
+
+      railsRef.current.add(leftRail)
+      railsRef.current.add(rightRail)
+    }
   }
+
+  useEffect(() => {
+    createRailroad()
+  }, [pathPoints.current])
 
   useFrame((_, delta) => {
     if (!trainRef.current) return
 
-    // Gestion de la vitesse avec les touches
     const keys = get()
     if (keys.speedUp) {
       speed.current = Math.min(speed.current + delta * 0.5, 2.0)
@@ -45,6 +111,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
     // Génère une nouvelle section quand on approche de la fin
     if (currentPosition.current >= pathPoints.current.length - 100) {
       generateNewPathSection()
+      createRailroad() // Mise à jour des rails après génération du path
     }
 
     currentPosition.current += speed.current
@@ -87,31 +154,33 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
   const generateNewPathSection = () => {
     const lastPoint = pathPoints.current[pathPoints.current.length - 1]
     
-    // Calcul d'un nouvel angle horizontal avec une variation plus douce
     const angleVariation = Math.PI / 6
     const newAngle = lastAngle.current + (Math.random() * angleVariation * 2 - angleVariation)
     lastAngle.current = newAngle
     
-    const sectionLength = 40 // Longueur fixe de la section
-
-    // Création du point final de la section
+    const sectionLength = 40
     const endPoint = new THREE.Vector3(
       lastPoint.x + Math.cos(newAngle) * sectionLength,
       0,
       lastPoint.z + Math.sin(newAngle) * sectionLength
     )
 
-    // Ajustement de la hauteur en fonction du terrain
-    endPoint.y = getTerrainHeight(endPoint.x, endPoint.z)
+    // Calcul de la hauteur avec une variation plus douce
+    const currentHeight = lastPoint.y
+    const heightVariation = 2
+    const targetHeight = currentHeight + (Math.random() * heightVariation * 2 - heightVariation)
+    endPoint.y = targetHeight
 
-    // Création des points intermédiaires pour une ligne droite
+    // Création des points intermédiaires avec interpolation douce de la hauteur
     const numPoints = 10
     const points: THREE.Vector3[] = []
     for (let i = 1; i <= numPoints; i++) {
       const t = i / numPoints
+      // Utilisation d'une fonction de lissage pour la hauteur
+      const smoothT = t * t * (3 - 2 * t) // Fonction de lissage Hermite
       const x = lastPoint.x + (endPoint.x - lastPoint.x) * t
       const z = lastPoint.z + (endPoint.z - lastPoint.z) * t
-      const y = getTerrainHeight(x, z)
+      const y = currentHeight + (targetHeight - currentHeight) * smoothT
       points.push(new THREE.Vector3(x, y, z))
     }
 
@@ -124,9 +193,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
 
   // Génère le chemin initial
   useEffect(() => {
-    for (let i = 0; i < 10; i++) { // Génère 10 sections à l'avance
+    for (let i = 0; i < 10; i++) {
       generateNewPathSection()
     }
+    createRailroad()
   }, [])
 
   useEffect(() => {
@@ -134,9 +204,12 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
   }, [initialSpeed])
 
   return (
-    <mesh ref={trainRef}>
-      <boxGeometry args={[4, 2, 2]} />
-      <meshStandardMaterial color="blue" />
-    </mesh>
+    <>
+      <group ref={railsRef} />
+      <mesh ref={trainRef}>
+        <boxGeometry args={[4, 2, 2]} />
+        <meshStandardMaterial color="blue" />
+      </mesh>
+    </>
   )
 }
