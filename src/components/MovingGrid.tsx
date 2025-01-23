@@ -39,13 +39,14 @@ export function MovingGrid({ position, size = 200, divisions = 120, points }: Mo
 
         if (dist < minDist) {
           minDist = dist
-          // Limite la hauteur du chemin entre 0 et 30
-          pathHeight = Math.min(Math.max(point.y, 0), 30)
+          // Limite la hauteur du chemin entre 0 et 50
+          pathHeight = Math.min(Math.max(point.y, 0), 50)
         }
       }
 
       const pathWidth = 40
       const influence = Math.max(0, 1 - (minDist / pathWidth) ** 2)
+      // Assure une transition plus douce avec le terrain environnant
       height = THREE.MathUtils.lerp(height, pathHeight, influence)
     }
 
