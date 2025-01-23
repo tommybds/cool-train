@@ -1,0 +1,272 @@
+import React, { useMemo, useRef, useEffect } from 'react'
+import { Sky } from '@react-three/drei'
+import { useFrame } from '@react-three/fiber'
+import * as THREE from 'three'
+import { EnvironmentProps } from '../types'
+import { createNoise2D } from 'simplex-noise'
+
+function Tree({ position }: { position: THREE.Vector3 }) {
+  return (
+    <group position={position}>
+      {/* Tronc */}
+      <mesh castShadow position={[0, 1.5, 0]}>
+        <cylinderGeometry args={[0.2, 0.3, 3]} />
+        <meshStandardMaterial color="#3e2723" />
+      </mesh>
+      {/* Feuillage */}
+      <mesh castShadow position={[0, 3.5, 0]}>
+        <coneGeometry args={[1.5, 3, 8]} />
+        <meshStandardMaterial color="#2e7d32" />
+      </mesh>
+    </group>
+  )
+}
+
+export function Environment({ sceneType, weather, timeOfDay, onTerrainGenerated, trainPosition, trackPath }: EnvironmentProps) {
+  const terrainRef = useRef<THREE.Mesh>(null)
+  const lastChunkPosition = useRef<THREE.Vector2>(new THREE.Vector2(Infinity, Infinity))
+  const noise2D = useMemo(() => createNoise2D(), [])
+  const currentChunkRef = useRef<THREE.Vector2>(new THREE.Vector2())
+  const treesRef = useRef<THREE.Vector3[]>([])
+  const geometryRef = useRef<THREE.BufferGeometry>()
+  const chunksRef = useRef<Set<string>>(new Set())
+
+  const params = useMemo(() => ({
+    scale: sceneType === 'mountain' ? 150 : 100,
+    heightScale: sceneType === 'mountain' ? 15 : 5,
+    octaves: sceneType === 'mountain' ? 6 : 3,
+    persistence: sceneType === 'mountain' ? 0.5 : 0.3,
+    railwayWidth: 5,
+    chunkSize: 50,
+    resolution: 32,
+    renderDistance: 5
+  }), [sceneType])
+
+  const getHeight = useMemo(() => {
+    return (x: number, z: number) => {
+      let height = 0
+      let frequency = 1
+      let amplitude = 1
+      let totalAmplitude = 0
+      
+      for (let i = 0; i < params.octaves; i++) {
+        height += noise2D(x / params.scale * frequency, z / params.scale * frequency) * amplitude
+        totalAmplitude += amplitude
+        frequency *= 2
+        amplitude *= params.persistence
+      }
+      
+      height = height / totalAmplitude
+
+      if (trackPath) {
+        const points = trackPath.getPoints(200)
+        let minDist = Infinity
+        let closestPoint = null
+
+        for (let i = 0; i < points.length; i++) {
+          const point = points[i]
+          const dist = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.z - z, 2))
+          if (dist < minDist) {
+            minDist = dist
+            closestPoint = point
+          }
+        }
+
+        if (closestPoint && minDist < params.railwayWidth * 4) {
+          const t = Math.min(minDist / (params.railwayWidth * 4), 1)
+          const smoothStep = t * t * (3 - 2 * t)
+          return closestPoint.y + height * smoothStep * params.heightScale
+        }
+      }
+      
+      return height * params.heightScale
+    }
+  }, [noise2D, params, trackPath])
+
+  const generateTrees = (chunkX: number, chunkZ: number) => {
+    const positions: THREE.Vector3[] = []
+    const numTrees = sceneType === 'mountain' ? 100 : 50
+    const spread = params.chunkSize * 0.8
+
+    const random = (x: number) => {
+      const a = Math.sin(x * 12.9898 + chunkX * 78.233 + chunkZ * 45.543) * 43758.5453123
+      return a - Math.floor(a)
+    }
+
+    for (let i = 0; i < numTrees; i++) {
+      const x = chunkX + (random(i * 2) * spread - spread/2)
+      const z = chunkZ + (random(i * 2 + 1) * spread - spread/2)
+      const y = getHeight(x, z)
+      
+      if (trackPath) {
+        const points = trackPath.getPoints(50)
+        let tooClose = false
+        for (const point of points) {
+          const dist = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.z - z, 2))
+          if (dist < params.railwayWidth * 2) {
+            tooClose = true
+            break
+          }
+        }
+        if (!tooClose) {
+          positions.push(new THREE.Vector3(x, y, z))
+        }
+      }
+    }
+
+    return positions
+  }
+
+  useEffect(() => {
+    if (!terrainRef.current) return
+
+    const totalVertices = (params.resolution + 1) * (params.resolution + 1) * Math.pow(2 * params.renderDistance + 1, 2)
+    const vertices = new Array(totalVertices * 3).fill(0)
+    const indices = []
+
+    // Créer les indices pour tous les chunks
+    for (let chunkI = -params.renderDistance; chunkI <= params.renderDistance; chunkI++) {
+      for (let chunkJ = -params.renderDistance; chunkJ <= params.renderDistance; chunkJ++) {
+        const chunkOffset = ((chunkI + params.renderDistance) * (2 * params.renderDistance + 1) + (chunkJ + params.renderDistance)) * (params.resolution + 1) * (params.resolution + 1)
+        
+        for (let i = 0; i < params.resolution; i++) {
+          for (let j = 0; j < params.resolution; j++) {
+            const a = chunkOffset + i * (params.resolution + 1) + j
+            const b = a + 1
+            const c = a + (params.resolution + 1)
+            const d = c + 1
+            indices.push(a, b, d)
+            indices.push(a, d, c)
+          }
+        }
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+    geometry.setIndex(indices)
+    geometryRef.current = geometry
+    terrainRef.current.geometry = geometry
+
+    // Générer le terrain initial
+    updateTerrainGeometry(0, 0)
+    onTerrainGenerated(getHeight)
+  }, [params.resolution, params.renderDistance])
+
+  const updateTerrainGeometry = (centerChunkX: number, centerChunkZ: number) => {
+    if (!geometryRef.current) return
+
+    const positions = geometryRef.current.attributes.position.array as Float32Array
+    const newChunks = new Set<string>()
+    treesRef.current = []
+
+    // Générer tous les chunks dans le rayon de rendu
+    for (let i = -params.renderDistance; i <= params.renderDistance; i++) {
+      for (let j = -params.renderDistance; j <= params.renderDistance; j++) {
+        const chunkX = centerChunkX + i * params.chunkSize
+        const chunkZ = centerChunkZ + j * params.chunkSize
+        const chunkKey = `${chunkX},${chunkZ}`
+
+        // Calculer l'offset pour ce chunk dans le tableau de vertices
+        const chunkOffset = ((i + params.renderDistance) * (2 * params.renderDistance + 1) + (j + params.renderDistance)) * (params.resolution + 1) * (params.resolution + 1) * 3
+
+        // Mettre à jour les vertices pour ce chunk
+        for (let vi = 0; vi <= params.resolution; vi++) {
+          for (let vj = 0; vj <= params.resolution; vj++) {
+            const x = chunkX + (vi / params.resolution) * params.chunkSize
+            const z = chunkZ + (vj / params.resolution) * params.chunkSize
+            const y = getHeight(x, z)
+
+            const idx = chunkOffset + (vi * (params.resolution + 1) + vj) * 3
+            positions[idx] = x
+            positions[idx + 1] = y
+            positions[idx + 2] = z
+          }
+        }
+
+        // Générer les arbres pour ce chunk
+        let shouldGenerateTrees = true
+
+        if (trackPath) {
+          const centerPoint = new THREE.Vector3(chunkX + params.chunkSize/2, 0, chunkZ + params.chunkSize/2)
+          const points = trackPath.getPoints(50)
+          for (const point of points) {
+            const dist = Math.sqrt(Math.pow(point.x - centerPoint.x, 2) + Math.pow(point.z - centerPoint.z, 2))
+            if (dist < params.railwayWidth * 6) {
+              shouldGenerateTrees = false
+              break
+            }
+          }
+        }
+
+        if (shouldGenerateTrees) {
+          treesRef.current.push(...generateTrees(chunkX, chunkZ))
+        }
+
+        newChunks.add(chunkKey)
+      }
+    }
+
+    geometryRef.current.attributes.position.needsUpdate = true
+    geometryRef.current.computeVertexNormals()
+    chunksRef.current = newChunks
+  }
+
+  useFrame(() => {
+    if (!trainPosition) return
+
+    const chunkX = Math.floor(trainPosition.x / params.chunkSize) * params.chunkSize
+    const chunkZ = Math.floor(trainPosition.z / params.chunkSize) * params.chunkSize
+    currentChunkRef.current.set(chunkX, chunkZ)
+
+    if (!currentChunkRef.current.equals(lastChunkPosition.current)) {
+      updateTerrainGeometry(chunkX, chunkZ)
+      lastChunkPosition.current.copy(currentChunkRef.current)
+    }
+  })
+
+  const sunPos = useMemo(() => {
+    switch(timeOfDay) {
+      case 'morning': return [5, 20, 100]
+      case 'noon': return [100, 100, 100]
+      case 'evening': return [200, 20, 100]
+      case 'night': return [100, -100, 100]
+    }
+  }, [timeOfDay])
+
+  const sunVector = useMemo(() => new THREE.Vector3(...sunPos), [sunPos])
+
+  return (
+    <>
+      <Sky distance={450000} sunPosition={sunVector} />
+      <ambientLight intensity={timeOfDay === 'night' ? 0.1 : 0.5} />
+      <directionalLight 
+        position={sunVector}
+        intensity={weather === 'cloudy' ? 0.5 : 1}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+      />
+
+      <mesh ref={terrainRef} receiveShadow>
+        <meshStandardMaterial 
+          color={sceneType === 'mountain' ? '#4b5320' : '#4caf50'}
+          roughness={0.8}
+          metalness={0.1}
+        />
+      </mesh>
+
+      {treesRef.current.map((position) => (
+        <Tree key={`${position.x}-${position.y}-${position.z}`} position={position} />
+      ))}
+
+      <fog 
+        attach="fog" 
+        args={[
+          weather === 'rainy' ? '#203040' : (weather === 'cloudy' ? '#808080' : '#ffffff'),
+          weather === 'rainy' ? 50 : 100,
+          weather === 'rainy' ? 300 : 1000
+        ]} 
+      />
+    </>
+  )
+} 
