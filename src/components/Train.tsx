@@ -192,8 +192,8 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
 
     // Augmentation des variations de hauteur
     const currentHeight = lastPoint.y
-    const heightVariation = 5 // Augmenté de 2 à 5
-    const targetHeight = currentHeight + (Math.random() * heightVariation * 2 - heightVariation)
+    const heightVariation = 5
+    const targetHeight = Math.max(0, currentHeight + (Math.random() * heightVariation * 2 - heightVariation))
     endPoint.y = targetHeight
 
     // Création des points intermédiaires avec interpolation douce de la hauteur
@@ -204,7 +204,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, initialSp
       const smoothT = t * t * (3 - 2 * t)
       const x = lastPoint.x + (endPoint.x - lastPoint.x) * t
       const z = lastPoint.z + (endPoint.z - lastPoint.z) * t
-      const y = currentHeight + (targetHeight - currentHeight) * smoothT
+      const y = Math.max(0, currentHeight + (targetHeight - currentHeight) * smoothT)
       points.push(new THREE.Vector3(x, y, z))
     }
 

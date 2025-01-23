@@ -3,7 +3,7 @@ import { useMemo, useEffect } from 'react'
 import { MovingGridProps } from '../types'
 import { createNoise2D } from 'simplex-noise'
 
-export function MovingGrid({ position, size = 200, divisions = 80, points }: MovingGridProps) {
+export function MovingGrid({ position, size = 200, divisions = 120, points }: MovingGridProps) {
   const noise2D = useMemo(() => createNoise2D(), [])
   
   const gridPosition = new THREE.Vector3(
@@ -28,7 +28,7 @@ export function MovingGrid({ position, size = 200, divisions = 80, points }: Mov
 
     if (points && points.length > 0) {
       let minDist = Infinity
-      let pathHeight = height
+      let pathHeight = Math.max(height, 0)
 
       for (const point of points) {
         const dx = worldX - point.x
@@ -37,7 +37,7 @@ export function MovingGrid({ position, size = 200, divisions = 80, points }: Mov
 
         if (dist < minDist) {
           minDist = dist
-          pathHeight = point.y
+          pathHeight = Math.max(point.y, 0)
         }
       }
 
@@ -46,7 +46,7 @@ export function MovingGrid({ position, size = 200, divisions = 80, points }: Mov
       height = THREE.MathUtils.lerp(height, pathHeight, influence)
     }
 
-    return height
+    return Math.max(height, 0)
   }
 
   // Création de la grille
@@ -69,15 +69,15 @@ export function MovingGrid({ position, size = 200, divisions = 80, points }: Mov
         const y3 = getTerrainHeight(x, z2)
         const y4 = getTerrainHeight(x2, z2)
 
-        // Premier triangle
+        // Premier triangle (sens anti-horaire)
         vertices.push(x, y1, z)
-        vertices.push(x2, y2, z)
         vertices.push(x, y3, z2)
+        vertices.push(x2, y2, z)
 
-        // Second triangle
+        // Second triangle (sens anti-horaire)
         vertices.push(x2, y2, z)
-        vertices.push(x2, y4, z2)
         vertices.push(x, y3, z2)
+        vertices.push(x2, y4, z2)
       }
     }
 
@@ -86,54 +86,52 @@ export function MovingGrid({ position, size = 200, divisions = 80, points }: Mov
     return geometry
   }, [size, divisions, points, gridPosition, noise2D])
 
-  // Création du terrain
-  const terrain = useMemo(() => {
-    const geometry = new THREE.PlaneGeometry(size * 3, size * 3, divisions, divisions)
-    const vertices = geometry.attributes.position.array as Float32Array
-
-    for (let i = 0; i <= divisions; i++) {
-      for (let j = 0; j <= divisions; j++) {
-        const vertexIndex = (i * (divisions + 1) + j) * 3
-        const x = -size * 1.5 + j * (size * 3 / divisions)
-        const z = -size * 1.5 + i * (size * 3 / divisions)
-        vertices[vertexIndex + 1] = getTerrainHeight(x, z)
-      }
-    }
-
-    geometry.computeVertexNormals()
-    return geometry
-  }, [size, divisions, points, gridPosition, noise2D])
-
   // Nettoyage des ressources
   useEffect(() => {
     return () => {
-      terrain.dispose()
       customGrid.dispose()
     }
-  }, [terrain, customGrid])
+  }, [customGrid])
 
   return (
     <group position={gridPosition}>
-      {/* Terrain solide */}
+      {/* Plan d'eau */}
       <mesh 
-        geometry={terrain}
+        position={[0, -0.05, 0]} 
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.1, 0]}
       >
-        <meshLambertMaterial 
-          color="#2d5e1e"
-          side={THREE.FrontSide}
+        <planeGeometry args={[size * 3.2, size * 3.2]} />
+        <meshPhysicalMaterial 
+          color="#0077be"
+          transparent
+          opacity={0.8}
+          roughness={0}
+          metalness={0.1}
+          clearcoat={1}
+          clearcoatRoughness={0.1}
+          envMapIntensity={1}
         />
       </mesh>
 
-      {/* Grille avec faces colorées */}
+      {/* Terrain */}
       <mesh geometry={customGrid}>
-        <meshBasicMaterial color="#2d5e1e" side={THREE.DoubleSide} />
+        <meshStandardMaterial 
+          color="#2d5e1e" 
+          side={THREE.FrontSide}
+          roughness={0.8}
+          metalness={0.1}
+        />
       </mesh>
 
       {/* Lignes de la grille */}
       <mesh geometry={customGrid}>
-        <meshBasicMaterial color="#666" wireframe={true} />
+        <meshBasicMaterial 
+          color="#666" 
+          wireframe={true} 
+          opacity={0.15}
+          transparent
+          depthWrite={false}
+        />
       </mesh>
     </group>
   )
