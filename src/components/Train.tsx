@@ -149,23 +149,8 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
         sleeper.position.copy(pos)
         sleeper.position.y += sleeperHeight/2
         
-        // Calcul de la rotation en Z (pente)
-        const heightDiff = end.y - start.y
-        const horizontalDistance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.z - start.z, 2))
-        const slopeAngle = -Math.atan2(heightDiff, horizontalDistance)
-        
-        // Utiliser la même logique de rotation que le train
-        const horizontalDirection = direction.clone()
-        horizontalDirection.y = 0
-        horizontalDirection.normalize()
-        
-        // D'abord on oriente la traverse perpendiculairement aux rails
-        const euler = new THREE.Euler(
-          slopeAngle,  // La pente est maintenant sur l'axe X
-          Math.atan2(horizontalDirection.x, horizontalDirection.z) + Math.PI/2,  // +90° pour être perpendiculaire
-          0  // Pas de rotation en Z
-        )
-        sleeper.setRotationFromEuler(euler)
+        const sleeperDirection = right
+        sleeper.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sleeperDirection)
         
         railsRef.current.add(sleeper)
       }
