@@ -10,6 +10,7 @@ import { Suspense } from 'react'
 import { Ground } from './components/Ground'
 import { DistanceCounter } from './components/DistanceCounter'
 import { ErrorBoundary } from 'react-error-boundary'
+import { Stats } from './components/Stats'
 
 export default function App() {
   const [pathPoints, setPathPoints] = useState<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
@@ -57,6 +58,7 @@ export default function App() {
 
   return (
     <>
+      <Stats />
       <div style={{
         position: 'fixed',
         top: '20px',
