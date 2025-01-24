@@ -104,81 +104,45 @@ function Sign({ text = "STATION" }) {
 
 export function TrackEvents({ pathPoints }: TrackEventsProps) {
   const events = useRef<TrackEvent[]>([])
-  const METERS_PER_UNIT = 100
   const MIN_EVENT_SPACING = 50
 
   const generateEvents = () => {
+    if (!pathPoints || pathPoints.length < 2) return
+    
     console.log('Generating events for path length:', pathPoints.length)
     const newEvents: TrackEvent[] = []
 
-    // Ajouter une borne au départ
-    if (pathPoints.length > 1) {
-      const startDirection = pathPoints[1].clone().sub(pathPoints[0]).normalize()
-      const startPosition = pathPoints[0].clone()
-      const startOffset = new THREE.Vector3(-startDirection.z, 0, startDirection.x).multiplyScalar(2)
-      startPosition.add(startOffset)
+    try {
+      // Parcourir tous les points du chemin
+      for (let i = 0; i < pathPoints.length - 1; i++) {
+        const currentPoint = pathPoints[i]
+        const nextPoint = pathPoints[i + 1]
+        
+        if (!currentPoint || !nextPoint) continue
+        
+        const direction = nextPoint.clone().sub(currentPoint).normalize()
 
-      newEvents.push({
-        type: 'kilometer',
-        position: startPosition,
-        rotation: new THREE.Euler(0, Math.atan2(startDirection.x, startDirection.z), 0),
-        scale: 1,
-        data: { kilometer: 0 }
-      })
-      console.log('Added start marker at:', startPosition)
-    }
+        // Autres événements aléatoires
+        if (i % MIN_EVENT_SPACING === 0 && Math.random() < 0.3) {
+          const eventType = ['station', 'signal', 'tree', 'rock', 'sign'][Math.floor(Math.random() * 5)] as TrackEvent['type']
+          const position = currentPoint.clone()
+          const side = Math.random() < 0.5 ? -1 : 1
+          const offset = new THREE.Vector3(-direction.z, 0, direction.x).multiplyScalar(side * 3)
+          position.add(offset)
 
-    // Calculer la distance totale
-    let accumulatedDistance = 0
-
-    // Parcourir tous les points du chemin
-    for (let i = 0; i < pathPoints.length - 1; i++) {
-      const currentPoint = pathPoints[i]
-      const nextPoint = pathPoints[i + 1]
-      const segmentLength = currentPoint.distanceTo(nextPoint)
-      const direction = nextPoint.clone().sub(currentPoint).normalize()
-
-      // Vérifier si nous devons placer une borne kilométrique
-      const currentKm = Math.floor(accumulatedDistance * METERS_PER_UNIT / 1000)
-      const nextKm = Math.floor((accumulatedDistance + segmentLength) * METERS_PER_UNIT / 1000)
-
-      if (nextKm > currentKm) {
-        // Calculer la position exacte du kilomètre
-        const kmDistance = (currentKm + 1) * 1000 / METERS_PER_UNIT - accumulatedDistance
-        const fraction = kmDistance / segmentLength
-        const position = currentPoint.clone().lerp(nextPoint, fraction)
-        const offset = new THREE.Vector3(-direction.z, 0, direction.x).multiplyScalar(2)
-        position.add(offset)
-
-        newEvents.push({
-          type: 'kilometer',
-          position,
-          rotation: new THREE.Euler(0, Math.atan2(direction.x, direction.z), 0),
-          scale: 1,
-          data: { kilometer: nextKm }
-        })
+          newEvents.push({
+            type: eventType,
+            position,
+            rotation: new THREE.Euler(0, Math.atan2(direction.x, direction.z), 0),
+            scale: 1
+          })
+        }
       }
 
-      // Autres événements aléatoires
-      if (i % MIN_EVENT_SPACING === 0 && Math.random() < 0.3) {
-        const eventType = ['station', 'signal', 'tree', 'rock', 'sign'][Math.floor(Math.random() * 5)] as TrackEvent['type']
-        const position = currentPoint.clone()
-        const side = Math.random() < 0.5 ? -1 : 1
-        const offset = new THREE.Vector3(-direction.z, 0, direction.x).multiplyScalar(side * 3)
-        position.add(offset)
-
-        newEvents.push({
-          type: eventType,
-          position,
-          rotation: new THREE.Euler(0, Math.atan2(direction.x, direction.z), 0),
-          scale: 1
-        })
-      }
-
-      accumulatedDistance += segmentLength
+      events.current = newEvents
+    } catch (error) {
+      console.error('Error generating events:', error)
     }
-
-    events.current = newEvents
   }
 
   // Générer les événements immédiatement quand les points du chemin changent
@@ -189,52 +153,10 @@ export function TrackEvents({ pathPoints }: TrackEventsProps) {
     }
   }, [pathPoints])
 
-  const KilometerMarker = ({ position, rotation, data, scale }: TrackEvent) => {
-    return (
-      <group position={position} rotation={rotation} scale={scale}>
-        {/* Poteau principal */}
-        <mesh position={[0, 1.5, 0]}>
-          <boxGeometry args={[0.3, 3, 0.3]} />
-          <meshStandardMaterial color="#666666" metalness={0.6} roughness={0.4} />
-        </mesh>
-        {/* Panneau */}
-        <mesh position={[0, 2.8, 0]}>
-          <boxGeometry args={[1.2, 0.8, 0.1]} />
-          <meshStandardMaterial color="#444444" metalness={0.4} roughness={0.6} />
-        </mesh>
-        {/* Texte face avant */}
-        <Text 
-          position={[0, 2.8, 0.06]} 
-          fontSize={0.4} 
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-          font="/fonts/Inter-Bold.woff"
-        >
-          {`${data?.kilometer}km`}
-        </Text>
-        {/* Texte face arrière */}
-        <Text 
-          position={[0, 2.8, -0.06]} 
-          fontSize={0.4} 
-          color="white"
-          anchorX="center"
-          anchorY="middle"
-          rotation={[0, Math.PI, 0]}
-          font="/fonts/Inter-Bold.woff"
-        >
-          {`${data?.kilometer}km`}
-        </Text>
-      </group>
-    )
-  }
-
   return (
     <group>
       {events.current.map((event, index) => {
         switch (event.type) {
-          case 'kilometer':
-            return <KilometerMarker key={`km-${index}`} {...event} />
           case 'station':
             return <group key={`station-${index}`} position={event.position} rotation={event.rotation} scale={event.scale}><Station /></group>
           case 'signal':

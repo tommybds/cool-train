@@ -83,7 +83,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
   // Utiliser useState pour les wagons pour forcer le re-rendu
   const [wagons, setWagons] = useState<{ position: THREE.Vector3, rotation: THREE.Euler, scale: number, opacity: number }[]>([])
 
-  const WAGON_SPACING = 0.8
+  const WAGON_SPACING = 0.5
   const WAGON_COLORS = ['#4a90e2', '#e24a4a', '#4ae24a', '#e2e24a', '#4ae2e2', '#e24ae2']
   const MAX_WAGONS = 10
   const KEY_COOLDOWN = 200
@@ -149,8 +149,23 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
         sleeper.position.copy(pos)
         sleeper.position.y += sleeperHeight/2
         
-        const sleeperDirection = right
-        sleeper.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), sleeperDirection)
+        // Calcul de la rotation en Z (pente)
+        const heightDiff = end.y - start.y
+        const horizontalDistance = Math.sqrt(Math.pow(end.x - start.x, 2) + Math.pow(end.z - start.z, 2))
+        const slopeAngle = -Math.atan2(heightDiff, horizontalDistance)
+        
+        // Utiliser la même logique de rotation que le train
+        const horizontalDirection = direction.clone()
+        horizontalDirection.y = 0
+        horizontalDirection.normalize()
+        
+        // D'abord on oriente la traverse perpendiculairement aux rails
+        const euler = new THREE.Euler(
+          slopeAngle,  // La pente est maintenant sur l'axe X
+          Math.atan2(horizontalDirection.x, horizontalDirection.z) + Math.PI/2,  // +90° pour être perpendiculaire
+          0  // Pas de rotation en Z
+        )
+        sleeper.setRotationFromEuler(euler)
         
         railsRef.current.add(sleeper)
       }
@@ -232,7 +247,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     const newAngle = lastAngle.current + (Math.random() * angleVariation * 2 - angleVariation)
     lastAngle.current = newAngle
     
-    const sectionLength = 40
+    const sectionLength = 80
     const endPoint = new THREE.Vector3(
       lastPoint.x + Math.cos(newAngle) * sectionLength,
       0,
@@ -240,7 +255,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     )
 
     const currentHeight = lastPoint.y
-    const heightVariation = 5
+    const heightVariation = 10
     const rawTargetHeight = currentHeight + (Math.random() * heightVariation * 2 - heightVariation)
     const targetHeight = Math.min(Math.max(rawTargetHeight, 0), 50)
     endPoint.y = targetHeight
@@ -393,7 +408,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     distanceRef.current = totalDistance
 
     // Génération de nouvelles sections si nécessaire
-    if (currentPosition.current >= pathPoints.current.length - 20) {
+    if (currentPosition.current >= pathPoints.current.length - 40) {
       generateNewPathSection()
       createRailroad()
       // Forcer la mise à jour du chemin pour les événements
@@ -443,9 +458,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
         const updatedWagons = wagons.map((wagon, index) => {
           const wagonOffset = (index + 1) * WAGON_SPACING
           const wagonPosition = currentPosition.current - wagonOffset
-          const wagonPointIndex = Math.floor(Math.abs(wagonPosition)) % pathPoints.current.length
+          const adjustedPosition = Math.max(0, wagonPosition)
+          const wagonPointIndex = Math.floor(adjustedPosition) % pathPoints.current.length
           const wagonNextPointIndex = (wagonPointIndex + 1) % pathPoints.current.length
-          const wagonFraction = wagonPosition - Math.floor(wagonPosition)
+          const wagonFraction = adjustedPosition - Math.floor(adjustedPosition)
 
           const wagonPoint = pathPoints.current[wagonPointIndex]
           const wagonNextPoint = pathPoints.current[wagonNextPointIndex]

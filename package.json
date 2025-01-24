@@ -17,6 +17,7 @@
     "cannon-es": "^0.20.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-error-boundary": "^5.0.0",
     "simplex-noise": "^4.0.3",
     "three": "^0.172.0",
     "tone": "^15.0.4",
