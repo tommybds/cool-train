@@ -1,47 +1,17 @@
 import { useRef, useEffect, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { TrainProps } from '../types'
 import { useKeyboardControls } from '@react-three/drei'
+import { TrackEvents } from './TrackEvents'
+import { Wagon } from './Wagon'
 
-interface WagonProps {
-  position: THREE.Vector3
-  rotation: THREE.Euler
-  color: string
-  scale?: number
-  opacity?: number
-}
-
-function Wagon({ position, rotation, color, scale = 1, opacity = 1 }: WagonProps) {
-  const wagonRef = useRef<THREE.Group>(null)
-
-  return (
-    <group ref={wagonRef} position={position} rotation={rotation} scale={scale}>
-      <mesh position={[0, 1.2, 0]}>
-        <boxGeometry args={[2.5, 1.4, 1.6]} />
-        <meshStandardMaterial color={color} transparent opacity={opacity} />
-        
-        <group position={[0, -0.8, 0]}>
-          <mesh position={[-0.8, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.4, 0.4, 0.2]} />
-            <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-          </mesh>
-          <mesh position={[-0.8, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.4, 0.4, 0.2]} />
-            <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-          </mesh>
-          <mesh position={[0.8, 0, 0.6]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.4, 0.4, 0.2]} />
-            <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-      </mesh>
-          <mesh position={[0.8, 0, -0.6]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.4, 0.4, 0.2]} />
-            <meshStandardMaterial color="#424242" transparent opacity={opacity} />
-      </mesh>
-        </group>
-      </mesh>
-    </group>
-  )
+interface TrainProps {
+  onPathUpdate: (points: THREE.Vector3[]) => void
+  onPositionUpdate: (position: THREE.Vector3) => void
+  onSpeedUpdate: (newSpeed: number) => void
+  onWagonCountUpdate: (count: number) => void
+  initialSpeed: number
+  distanceRef: React.MutableRefObject<number>
 }
 
 function Locomotive() {
@@ -95,11 +65,11 @@ function Locomotive() {
           <meshStandardMaterial color="#424242" />
         </mesh>
       </mesh>
-          </group>
+    </group>
   )
 }
 
-export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCountUpdate, initialSpeed = 0 }: TrainProps) {
+export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCountUpdate, initialSpeed, distanceRef }: TrainProps) {
   const trainRef = useRef<THREE.Group>(null)
   const pathPoints = useRef<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const railsRef = useRef<THREE.Group>(null)
@@ -108,6 +78,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
   const lastAngle = useRef(0)
   const currentRotation = useRef(new THREE.Euler())
   const lastKeyPress = useRef<number>(0)
+  const totalDistanceTraveled = useRef<number>(0)
 
   // Utiliser useState pour les wagons pour forcer le re-rendu
   const [wagons, setWagons] = useState<{ position: THREE.Vector3, rotation: THREE.Euler, scale: number, opacity: number }[]>([])
@@ -200,7 +171,8 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
 
     // S'assurer que le chemin est généré avant de créer les wagons
     if (pathPoints.current.length >= 2) {
-      console.log('Initializing wagons, path length:', pathPoints.current.length)
+      // Forcer la mise à jour du chemin pour déclencher la génération des événements
+      onPathUpdate([...pathPoints.current])
       
       // Initialisation des wagons avec des positions correctes
       const initialWagons = Array(3).fill(0).map((_, index) => {
@@ -273,10 +245,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     const targetHeight = Math.min(Math.max(rawTargetHeight, 0), 50)
     endPoint.y = targetHeight
 
-  const numPoints = 10
-  const points: THREE.Vector3[] = []
-  for (let i = 1; i <= numPoints; i++) {
-    const t = i / numPoints
+    const numPoints = 10
+    const points: THREE.Vector3[] = []
+    for (let i = 1; i <= numPoints; i++) {
+      const t = i / numPoints
       const smoothT = t * t * (3 - 2 * t)
       const x = lastPoint.x + (endPoint.x - lastPoint.x) * t
       const z = lastPoint.z + (endPoint.z - lastPoint.z) * t
@@ -383,12 +355,11 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
   }
 
   useFrame((_, delta) => {
-    if (!trainRef.current || pathPoints.current.length < 2) return
+    if (!trainRef.current || !pathPoints.current.length) return
 
     const keys = get()
     const currentTime = Date.now()
 
-    // Gestion de la vitesse
     if (keys.forward) {
       speed.current = Math.min(speed.current + SPEED_INCREMENT * delta, MAX_SPEED)
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
@@ -398,14 +369,35 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
     }
 
-    // Mise à jour de la position du train
     const movement = speed.current * delta * MOVEMENT_SPEED
     currentPosition.current += movement
+    
+    // Calcul de la distance totale
+    let totalDistance = 0
+    const currentIndex = Math.floor(currentPosition.current)
+    const fraction = currentPosition.current - currentIndex
+
+    // Distance des segments complets
+    for (let i = 0; i < currentIndex && i < pathPoints.current.length - 1; i++) {
+      totalDistance += pathPoints.current[i].distanceTo(pathPoints.current[i + 1])
+    }
+
+    // Distance dans le segment actuel
+    if (currentIndex < pathPoints.current.length - 1) {
+      const segmentLength = pathPoints.current[currentIndex].distanceTo(pathPoints.current[currentIndex + 1])
+      totalDistance += segmentLength * fraction
+    }
+
+    // Ajouter la distance des points supprimés
+    totalDistance += totalDistanceTraveled.current
+    distanceRef.current = totalDistance
 
     // Génération de nouvelles sections si nécessaire
     if (currentPosition.current >= pathPoints.current.length - 20) {
       generateNewPathSection()
       createRailroad()
+      // Forcer la mise à jour du chemin pour les événements
+      onPathUpdate([...pathPoints.current])
     }
 
     // Position et rotation du train
@@ -495,7 +487,7 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
 
       if (onPositionUpdate) {
         const distance = Math.floor(currentPosition.current)
-        onPositionUpdate(trainRef.current.position.clone(), distance)
+        onPositionUpdate(trainRef.current.position.clone())
       }
     }
 
@@ -503,6 +495,16 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
     if (pathPoints.current.length > 200) {
       const safetyMargin = Math.floor(currentPosition.current - WAGON_SPACING * (wagons.length + 1))
       if (safetyMargin > 100) {
+        // Calculer la distance des points supprimés
+        const removedPoints = pathPoints.current.slice(0, safetyMargin - 50)
+        let removedDistance = 0
+        for (let i = 0; i < removedPoints.length - 1; i++) {
+          removedDistance += removedPoints[i].distanceTo(removedPoints[i + 1])
+        }
+
+        // Mettre à jour la distance totale avant de supprimer les points
+        totalDistanceTraveled.current += removedDistance
+
         pathPoints.current = pathPoints.current.slice(safetyMargin - 50)
         currentPosition.current -= (safetyMargin - 50)
         createRailroad()
@@ -538,6 +540,10 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
           opacity={wagon.opacity}
         />
       ))}
+      <TrackEvents 
+        pathPoints={pathPoints.current}
+        trainPosition={trainRef.current?.position || new THREE.Vector3()}
+      />
     </>
   )
 }
