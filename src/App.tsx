@@ -4,16 +4,19 @@ import { Physics } from '@react-three/rapier'
 import { Train } from './components/Train'
 import { Path } from './components/Path'
 import { MovingGrid } from './components/MovingGrid'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { Suspense } from 'react'
 import { Ground } from './components/Ground'
+import { DistanceCounter } from './components/DistanceCounter'
+import { ErrorBoundary } from 'react-error-boundary'
 
 export default function App() {
   const [pathPoints, setPathPoints] = useState<THREE.Vector3[]>([new THREE.Vector3(0, 0, 0)])
   const [trainPosition, setTrainPosition] = useState(new THREE.Vector3(0, 0, 0))
   const [speed, setSpeed] = useState(0.91)
   const [wagonCount, setWagonCount] = useState(3)
+  const distanceRef = useRef(0)
 
   // Création des sons
   useEffect(() => {
@@ -63,9 +66,6 @@ export default function App() {
         padding: '16px',
         borderRadius: '8px',
         margin: '8px',
-        fontFamily: 'sans-serif',
-        padding: '10px',
-        borderRadius: '5px',
         fontFamily: 'monospace',
         zIndex: 1000
       }}>
@@ -120,6 +120,7 @@ export default function App() {
                 onSpeedUpdate={handleSpeedUpdate}
                 onWagonCountUpdate={handleWagonCountUpdate}
                 initialSpeed={speed}
+                distanceRef={distanceRef}
               />
               <Path points={pathPoints} />
               <Ground />
@@ -154,6 +155,7 @@ export default function App() {
           </Physics>
         </Canvas>
       </KeyboardControls>
+      <DistanceCounter distance={distanceRef.current} />
     </>
   )
 }
