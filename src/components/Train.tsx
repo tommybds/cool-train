@@ -112,11 +112,11 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
   // Utiliser useState pour les wagons pour forcer le re-rendu
   const [wagons, setWagons] = useState<{ position: THREE.Vector3, rotation: THREE.Euler, scale: number, opacity: number }[]>([])
 
-  const WAGON_SPACING = 1.5
+  const WAGON_SPACING = 0.8
   const WAGON_COLORS = ['#4a90e2', '#e24a4a', '#4ae24a', '#e2e24a', '#4ae2e2', '#e24ae2']
   const MAX_WAGONS = 10
   const KEY_COOLDOWN = 200
-  const ANIMATION_DURATION = 500
+  const ANIMATION_DURATION = 200
   const MIN_SPEED = 0
   const MAX_SPEED = 2.0
   const SPEED_INCREMENT = 0.5
@@ -323,8 +323,8 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       const newWagon = {
         position,
         rotation,
-        scale: 0,
-        opacity: 0
+        scale: 1,
+        opacity: 1
       }
 
       setWagons(prev => [...prev, newWagon])
@@ -398,17 +398,6 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       if (onSpeedUpdate) onSpeedUpdate(speed.current)
     }
 
-    if (currentTime - lastKeyPress.current > KEY_COOLDOWN) {
-      if (keys.addWagon) {
-        addWagon()
-        lastKeyPress.current = currentTime
-      }
-      if (keys.removeWagon) {
-        removeWagon()
-        lastKeyPress.current = currentTime
-      }
-    }
-
     // Mise à jour de la position du train
     const movement = speed.current * delta * MOVEMENT_SPEED
     currentPosition.current += movement
@@ -432,23 +421,33 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
       trainRef.current.position.lerpVectors(currentPoint, nextPoint, trainFraction)
 
       const direction = nextPoint.clone().sub(currentPoint).normalize()
-      const up = new THREE.Vector3(0, 1, 0)
-      const matrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), direction, up)
-      const targetRotation = new THREE.Euler().setFromRotationMatrix(matrix)
+      
+      // Calcul de la rotation en Y (direction horizontale)
+      const horizontalDirection = direction.clone()
+      horizontalDirection.y = 0
+      horizontalDirection.normalize()
+      
+      // Calcul de la rotation en Y (direction)
+      const targetRotation = new THREE.Euler(
+        0,
+        Math.atan2(horizontalDirection.x, horizontalDirection.z) - Math.PI/2 + Math.PI,
+        0
+      )
 
+      // Calcul de la rotation en Z (pente) - inversé et sur l'axe Z
       const heightDiff = nextPoint.y - currentPoint.y
-      const distance = currentPoint.distanceTo(nextPoint)
-      const angle = Math.atan2(heightDiff, distance)
-      targetRotation.x += angle
-      targetRotation.y += Math.PI + Math.PI/2
+      const horizontalDistance = Math.sqrt(Math.pow(nextPoint.x - currentPoint.x, 2) + Math.pow(nextPoint.z - currentPoint.z, 2))
+      const slopeAngle = -Math.atan2(heightDiff, horizontalDistance)  // Note le signe négatif ici
+      targetRotation.z = slopeAngle
 
-      currentRotation.current.x += (targetRotation.x - currentRotation.current.x) * delta * 10
+      // Interpolation douce des rotations
+      currentRotation.current.x = 0 // Pas de rotation en X
       currentRotation.current.y += (targetRotation.y - currentRotation.current.y) * delta * 10
       currentRotation.current.z += (targetRotation.z - currentRotation.current.z) * delta * 10
       trainRef.current.rotation.copy(currentRotation.current)
 
       // Mise à jour des wagons
-      if (wagons.length > 0) {  // Ne mettre à jour que s'il y a des wagons
+      if (wagons.length > 0) {
         const updatedWagons = wagons.map((wagon, index) => {
           const wagonOffset = (index + 1) * WAGON_SPACING
           const wagonPosition = currentPosition.current - wagonOffset
@@ -464,14 +463,23 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
             newPosition.lerpVectors(wagonPoint, wagonNextPoint, wagonFraction)
 
             const wagonDirection = wagonNextPoint.clone().sub(wagonPoint).normalize()
-            const wagonMatrix = new THREE.Matrix4().lookAt(new THREE.Vector3(), wagonDirection, up)
-            const wagonRotation = new THREE.Euler().setFromRotationMatrix(wagonMatrix)
+            
+            // Même logique que pour le train
+            const wagonHorizontalDirection = wagonDirection.clone()
+            wagonHorizontalDirection.y = 0
+            wagonHorizontalDirection.normalize()
+            
+            const wagonRotation = new THREE.Euler(
+              0,
+              Math.atan2(wagonHorizontalDirection.x, wagonHorizontalDirection.z) - Math.PI/2 + Math.PI,
+              0
+            )
 
+            // Calcul de la rotation en Z (pente) pour le wagon - même logique que le train
             const wagonHeightDiff = wagonNextPoint.y - wagonPoint.y
-            const wagonDistance = wagonPoint.distanceTo(wagonNextPoint)
-            const wagonAngle = Math.atan2(wagonHeightDiff, wagonDistance)
-            wagonRotation.x += wagonAngle
-            wagonRotation.y += Math.PI + Math.PI/2
+            const wagonHorizontalDistance = Math.sqrt(Math.pow(wagonNextPoint.x - wagonPoint.x, 2) + Math.pow(wagonNextPoint.z - wagonPoint.z, 2))
+            const wagonSlopeAngle = -Math.atan2(wagonHeightDiff, wagonHorizontalDistance)  // Note le signe négatif ici
+            wagonRotation.z = wagonSlopeAngle
 
             return {
               ...wagon,
@@ -498,6 +506,18 @@ export function Train({ onPathUpdate, onPositionUpdate, onSpeedUpdate, onWagonCo
         pathPoints.current = pathPoints.current.slice(safetyMargin - 50)
         currentPosition.current -= (safetyMargin - 50)
         createRailroad()
+      }
+    }
+
+    // Gestion des touches pour ajouter/supprimer des wagons
+    if (currentTime - lastKeyPress.current > KEY_COOLDOWN) {
+      if (keys.addWagon && wagons.length < MAX_WAGONS) {
+        addWagon()
+        lastKeyPress.current = currentTime
+      }
+      if (keys.removeWagon && wagons.length > 1) {
+        removeWagon()
+        lastKeyPress.current = currentTime
       }
     }
   })
