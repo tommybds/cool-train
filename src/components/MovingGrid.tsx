@@ -46,6 +46,7 @@ export function MovingGrid({ position, size = 200, divisions = 120, points }: Mo
 
       const pathWidth = 40
       const influence = Math.max(0, 1 - (minDist / pathWidth) ** 4)
+      
       // Assure une transition plus douce avec le terrain environnant
       height = THREE.MathUtils.lerp(height, pathHeight, influence)
     }

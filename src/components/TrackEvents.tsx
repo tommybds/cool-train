@@ -4,6 +4,7 @@ import { Text } from '@react-three/drei'
 
 interface TrackEventsProps {
   pathPoints: THREE.Vector3[]
+  trainPosition?: THREE.Vector3
 }
 
 interface TrackEvent {
@@ -102,7 +103,7 @@ function Sign({ text = "STATION" }) {
   )
 }
 
-export function TrackEvents({ pathPoints }: TrackEventsProps) {
+export function TrackEvents({ pathPoints, trainPosition }: TrackEventsProps) {
   const events = useRef<TrackEvent[]>([])
   const MIN_EVENT_SPACING = 50
 

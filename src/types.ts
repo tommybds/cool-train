@@ -5,6 +5,7 @@ declare global {
     wagonSounds: {
       add: HTMLAudioElement
       remove: HTMLAudioElement
+      brake: HTMLAudioElement
     }
   }
 }
@@ -15,6 +16,8 @@ export interface TrainProps {
   onSpeedUpdate?: (speed: number) => void
   onWagonCountUpdate?: (count: number) => void
   initialSpeed?: number
+  distanceRef?: React.MutableRefObject<number>
+  children?: React.ReactNode
 }
 
 export interface MovingGridProps {
